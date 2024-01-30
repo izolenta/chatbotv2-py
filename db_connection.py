@@ -1,5 +1,6 @@
 import os
 import mysql.connector
+import datetime
 
 
 def get_db_connection():
@@ -33,3 +34,11 @@ def get_user_text_model(user_name):
         cursor.execute("SELECT model_name, system_prompt FROM chatbotv2.users u INNER JOIN chatbotv2.models m WHERE text_model_id = model_id AND user_name = %s", (user_name,))
         result = cursor.fetchone()
         return result
+
+
+def update_last_visit(user_name):
+    current_datetime = datetime.datetime.now()
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("UPDATE users SET last_active=%s WHERE user_name = %s", (current_datetime, user_name,))
+        conn.commit()

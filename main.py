@@ -35,6 +35,7 @@ def restricted(func):
             await context.bot.send_message(chat_id=update.effective_chat.id,
                                            text='Back off, {}, I do not know you!'.format(username))
             return
+        db.update_last_visit(username)
         return await func(update, context, *args, **kwargs)
 
     return wrapped
