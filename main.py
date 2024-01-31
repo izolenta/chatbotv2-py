@@ -57,6 +57,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @restricted
+async def check_ctx(update: Update, context: CallbackContext):
+    username = update.effective_chat.username
+    ctx = db.get_context_status(username)
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text='current chat mode: {}'.format('context' if ctx[0] == 1 else 'simple'))
+
+
+@restricted
+async def set_ctx(update: Update, context: CallbackContext):
+    username = update.effective_chat.username
+    db.set_context_mode(username, 1)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='current chat mode: context')
+
+
+@restricted
+async def reset_ctx(update: Update, context: CallbackContext):
+    username = update.effective_chat.username
+    db.set_context_mode(username, 0)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='current chat mode: simple')
+
+
+@restricted
+async def image(update: Update, context: CallbackContext):
+    username = update.effective_chat.username
+    response = client.images.generate(
+        model="dall-e-3",
+        prompt=' '.join(context.args),
+        size="1024x1024",
+        quality="standard",
+        n=1,
+    )
+
+    # Show the result that has been pushed to an url
+    await context.bot.send_photo(chat_id=update.effective_chat.id, photo=response.data[0].url)
+
+
+@restricted
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = db.get_user_text_model(update.effective_chat.username)
     message = update.message.text
@@ -75,9 +112,18 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main() -> None:
     application = ApplicationBuilder().token(os.environ.get("TELEGRAM_TOKEN")).build()
 
+    ctx_handler = CommandHandler('mode', check_ctx)
+    set_ctx_handler = CommandHandler('context', set_ctx)
+    reset_ctx_handler = CommandHandler('simple', reset_ctx)
+    img_handler = CommandHandler('image', image)
+
     start_handler = CommandHandler('start', start)
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     application.add_handler(start_handler)
+    application.add_handler(ctx_handler)
+    application.add_handler(set_ctx_handler)
+    application.add_handler(img_handler)
+    application.add_handler(reset_ctx_handler)
     application.add_handler(echo_handler)
 
     application.run_polling()

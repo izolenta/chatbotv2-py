@@ -36,6 +36,21 @@ def get_user_text_model(user_name):
         return result
 
 
+def get_context_status(user_name):
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT keep_context FROM chatbotv2.users  WHERE user_name = %s", (user_name,))
+        result = cursor.fetchone()
+        return result
+
+
+def set_context_mode(user_name, mode):
+    conn = get_db_connection()
+    with conn.cursor() as cursor:
+        cursor.execute("UPDATE users SET keep_context=%s WHERE user_name = %s", (mode, user_name,))
+        conn.commit()
+
+
 def update_last_visit(user_name):
     current_datetime = datetime.datetime.now()
     conn = get_db_connection()
