@@ -1,7 +1,5 @@
-from enum import Enum
-
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ConversationHandler, CommandHandler, MessageHandler, filters, \
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, \
     CallbackContext, \
     ContextTypes
 from openai import OpenAI
@@ -11,12 +9,7 @@ import db_connection as db
 import os
 import logging
 
-
-class AccessLevel(Enum):
-    USER = 0
-    POWERUSER = 1
-    SUPERUSER = 2
-
+from constants import AccessLevel, CTX_MODE
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,25 +50,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @restricted
+async def set_assistant(update: Update, context: CallbackContext):
+    username = update.effective_chat.username
+    person = 'a friendly personal assistant'
+    if len(context.args) > 0:
+        person = ' '.join(context.args)
+    db.set_assistant(username, person)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='Assistant: {}'.format(person))
+
+@restricted
+async def reset_assistant(update: Update, context: CallbackContext):
+    username = update.effective_chat.username
+    person = 'a friendly personal assistant'
+    db.set_assistant(username, person)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='Assistant: {}'.format(person))
+
+
+@restricted
 async def check_ctx(update: Update, context: CallbackContext):
     username = update.effective_chat.username
     ctx = db.get_context_status(username)
     await context.bot.send_message(chat_id=update.effective_chat.id,
-                                   text='current chat mode: {}'.format('context' if ctx[0] == 1 else 'simple'))
+                                   text='Current chat mode: {}'.format('context' if ctx[0] == 1 else 'simple'))
 
 
 @restricted
 async def set_ctx(update: Update, context: CallbackContext):
     username = update.effective_chat.username
     db.set_context_mode(username, 1)
-    await context.bot.send_message(chat_id=update.effective_chat.id, text='current chat mode: context')
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='Current chat mode: context, history is reset')
 
 
 @restricted
 async def reset_ctx(update: Update, context: CallbackContext):
     username = update.effective_chat.username
     db.set_context_mode(username, 0)
-    await context.bot.send_message(chat_id=update.effective_chat.id, text='current chat mode: simple')
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='Current chat mode: simple')
 
 
 @restricted
@@ -97,16 +107,42 @@ async def image(update: Update, context: CallbackContext):
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = db.get_user_text_model(update.effective_chat.username)
     message = update.message.text
-
+    keep_ctx = data[3]
+    if keep_ctx == CTX_MODE.SIMPLE.value:
+        await simple_echo(update, context, data[0], data[1], message)
+    else:
+        await content_echo(update, context, data[0], data[1], message)
     # Generate a response using ChatGPT 4
+
+
+async def simple_echo(update, context, model, person, message):
     completion = client.chat.completions.create(
-        model=data[0],
+        model=model,
         messages=[
-            {"role": "system","content": data[1]},
+            {"role": "system", "content": "You are {}".format(person)},
             {"role": "user", "content": message}
         ])
-    # Send the response back to the user
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=completion.choices[0].message.content)
+
+    response = completion.choices[0].message.content
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+
+
+async def content_echo(update, context, model, person, message):
+    username = update.effective_chat.username
+    msgs, is_new = db.get_context_array(username)
+    if is_new:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text='Your context is empty or too old, creating a new one')
+
+    ctx_arr = [{"role": "system", "content": "You are {}".format(person)}]
+    ctx_arr.extend(msgs)
+    user_message = {"role": "user", "content": message}
+    ctx_arr.extend([user_message])
+
+    completion = client.chat.completions.create(model=model, messages=ctx_arr)
+    response = completion.choices[0].message.content
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+    assistant_message = {"role": "assistant", "content": response}
+    db.add_to_context_array(username, user_message, assistant_message)
 
 
 def main() -> None:
@@ -116,14 +152,18 @@ def main() -> None:
     set_ctx_handler = CommandHandler('context', set_ctx)
     reset_ctx_handler = CommandHandler('simple', reset_ctx)
     img_handler = CommandHandler('image', image)
-
     start_handler = CommandHandler('start', start)
+    set_assistant_handler = CommandHandler('setassistant', set_assistant)
+    reset_assistant_handler = CommandHandler('resetassistant', reset_assistant)
+
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     application.add_handler(start_handler)
     application.add_handler(ctx_handler)
     application.add_handler(set_ctx_handler)
     application.add_handler(img_handler)
     application.add_handler(reset_ctx_handler)
+    application.add_handler(set_assistant_handler)
+    application.add_handler(reset_assistant_handler)
     application.add_handler(echo_handler)
 
     application.run_polling()
