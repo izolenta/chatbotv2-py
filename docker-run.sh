@@ -1,1 +1,1 @@
-docker run -d --restart unless-stopped --name chatbotv2 telegram-bot
+docker run -d --net=host --restart unless-stopped --name chatbotv2 telegram-bot
