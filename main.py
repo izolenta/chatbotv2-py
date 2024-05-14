@@ -169,13 +169,13 @@ async def vision_echo(update: Update, context: telegram.ext.ContextTypes.DEFAULT
     bb = await photo_file.download_as_bytearray()
     byte_stream = io.BytesIO(bb)
     img = Image.open(byte_stream)
-    img.thumbnail((200, 200), Resampling.BILINEAR)
+    img.thumbnail((512, 512), Resampling.BILINEAR)
     byte_arr = io.BytesIO()
     img.save(byte_arr, format='PNG')
     img_bytes = byte_arr.getvalue()
     base = image_to_base64(img_bytes)
     response = client.chat.completions.create(
-        model="gpt-4-vision-preview",
+        model="gpt-4o",
         messages=[
             {
                 "role": "user",
